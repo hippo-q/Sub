@@ -1,0 +1,129 @@
+Sub getMail()
+    Dim dic As Object, olApp As Object
+    Set dic = CreateObject("Scripting.Dictionary")
+    Set olApp = CreateObject("Outlook.Application")
+    FolderName1 = "Inbox"           
+    FolderName2 = "Client"
+    With Sheet1
+        On Error Resume Next
+        If .AutoFilterMode Then .AutoFilterMode = False
+        cc = .UsedRange.Find("*", , xlValues, xlWhole, xlByColumns, xlPrevious).Column
+        rr = .UsedRange.Find("*", , xlValues, xlWhole, xlByRows, xlPrevious).Row
+        On Error GoTo 0
+        With .Cells(2, 1).Resize(rr, cc)
+            .UnMerge
+            .ClearContents
+            .Borders.LineStyle = 0
+        End With
+    End With
+    rr = 2
+    Set nmsName = olApp.GetNamespace("MAPI") '获取所有邮箱账户
+    For Each fldFolder In nmsName.Folders '遍历邮箱账户       如果有多个账户的话，就惨了，得指定
+        Set myFolder = fldFolder.Folders(FolderName1).Folders(FolderName2)
+        For Each objitem In myFolder.Items '遍历所有邮件
+            If objitem.Class = 43 Then '如果这个邮件确实是邮件，不是文件夹，文件之类的东西
+                k = objitem.body
+                arr = resolve(k)
+                brr = TransposeArray(arr)
+                With Sheet1.Cells(rr, 1).Resize(UBound(brr, 1), UBound(brr, 2))
+                    .Value = brr
+                    .Borders(xlEdgeTop).LineStyle = 1
+                    .Borders(xlEdgeBottom).LineStyle = 1
+                    rr = rr + UBound(brr, 1)
+                End With
+            End If
+        Next
+    Next
+End Sub
+Function TransposeArray(arrA) As Variant
+    rr = UBound(arrA, 2) - LBound(arrA, 2) + 1
+    cc = UBound(arrA, 1) - LBound(arrA, 1) + 1
+    Dim r&, c&
+    Dim aRes()
+    If VBA.IsArray(arrA) Then
+        ReDim aRes(1 To rr, 1 To cc)
+        c = 0
+        For i = LBound(arrA, 1) To UBound(arrA, 1)
+            c = c + 1
+            r = 0
+            For j = LBound(arrA, 2) To UBound(arrA, 2)
+                r = r + 1
+                If Not IsNull(arrA(i, j)) Then aRes(r, c) = arrA(i, j)
+            Next
+        Next
+        TransposeArray = aRes
+    End If
+End Function
+
+Function resolve(s)
+    arr = Split(s, vbLf)
+    Dim dic As Object
+    Set dic = CreateObject("Scripting.Dictionary")
+    ks = Array("Trade Date*:*",  _
+          "* Leg*:*",  _
+          "BOFA FX Trade Recap*:*",  _
+          "Sells*:*",  _
+          "Buys*:*",  _
+          "Value Date*:*",  _
+          "Fixing Date*:*",  _
+          "Fixing Source*:*",  _
+          "All In Rate*:*",  _
+          "Swap pts*:*")
+    Dim brr()
+    ReDim brr(1 To 10, 1 To 1)
+    br = 0
+    For i = 0 To UBound(arr)
+        ar = arr(i)
+        For bc = 0 To UBound(ks)
+            k = ks(bc)
+            Debug.Print
+            If UCase(ar) Like UCase(k) Then
+                dic(k) = dic(k) + 1
+                If dic(k) > br Then
+                    br = br + 1
+                    ReDim Preserve brr(1 To UBound(brr, 1), 1 To br)
+                End If
+                If k = "BOFA FX Trade Recap*:" Then
+                    For i1 = i + 1 To UBound(arr)
+                        tem = arr(i1)
+                        tem = Replace(tem, " ", "")
+                        tem = Replace(tem, vbCr, "")
+                        If tem <> "" Then
+                            v = Replace(arr(i1), vbCr, "")
+                            brr(bc + 1, br) = v
+                            Exit For
+                        End If
+                    Next
+                ElseIf k = "* Leg*:*" Then
+                    v = Split(ar, ":")(0)
+                    v = Replace(v, vbCr, "")
+                    v = Trim(v)
+                    brr(bc + 1, br) = v
+                Else
+                    tem = Split(ar, ":")
+                    If UBound(tem) > 0 Then
+                        tem = tem(1)
+                        tem = Replace(tem, vbCr, "")
+                        tem = Trim(tem)
+                        If tem <> "" Then
+                            brr(bc + 1, br) = tem
+                        Else
+                            For i1 = i + 1 To UBound(arr)
+                                tem = arr(i1)
+                                tem = Replace(tem, " ", "")
+                                tem = Replace(tem, vbCr, "")
+                                If tem <> "" Then
+                                    v = Replace(arr(i1), vbCr, "")
+                                    brr(bc + 1, br) = v
+                                    Exit For
+                                End If
+                            Next
+                        End If
+                    End If
+                End If
+                Exit For
+            End If
+        Next
+    Next
+    resolve = brr
+End Function
