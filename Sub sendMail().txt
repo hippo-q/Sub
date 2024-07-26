@@ -1,0 +1,71 @@
+Function getFile(Optional ByVal myTitle As String = "Chose one excel file", Optional ByVal fileType As String = "所有Excel文件,*.xls*,所有文件,*")
+    getFile = Application.GetOpenFilename(fileType, , myTitle, , False)
+    If TypeName(getFile) <> "String" Then
+        getFile = ""
+    End If
+End Function
+Sub sendMail()
+    Application.DisplayAlerts = False
+    myFile = getFile
+    If myFile = "" Then Exit Sub
+    myFilePath = ThisWorkbook.Path & "\temtkejtkejtlwkejtklwejt.html"
+    '打开刚才选择的文件，并复制第一个sheet为新文件
+    With Workbooks.Open(myFile, False, True)
+        .Sheets(1).Copy
+        .Close False
+    End With
+    '将新文件加上框线，删除表头，存储为html
+    With ActiveSheet
+        On Error Resume Next
+        If .AutoFilterMode Then .AutoFilterMode = False
+        Cc = .UsedRange.Find("*", , xlValues, xlWhole, xlByColumns, xlPrevious).Column
+        rr = .UsedRange.Find("*", , xlValues, xlWhole, xlByRows, xlPrevious).Row
+        On Error GoTo 0
+        .Range(.Cells(1, 1), .Cells(rr, Cc)).Borders.LineStyle = 1
+        .Cells(1).EntireRow.Delete
+        .Parent.SaveAs myFilePath, xlHtml
+        .Parent.Close False
+    End With
+    '将存储的html当做邮件正文，发送。
+    HTMLBody = ReadUTF(myFilePath)
+    Set olApp = CreateObject("Outlook.Application")
+    With ThisWorkbook.Sheets(1)
+        On Error Resume Next
+        If .AutoFilterMode Then .AutoFilterMode = False
+        Cc = .UsedRange.Find("*", , xlValues, xlWhole, xlByColumns, xlPrevious).Column
+        rr = .UsedRange.Find("*", , xlValues, xlWhole, xlByRows, xlPrevious).Row
+        On Error GoTo 0
+        arr = .Range(.Cells(1, 1), .Cells(rr, Cc)).Value
+        For ar = 2 To UBound(arr, 1)
+            myTo = arr(ar, 1)
+            myCc = arr(ar, 2)
+            If InStr(myTo, "@") > 0 Then
+                With olApp.CreateItem(0)
+                    .Subject = Format(Date, "[$-409]mmm d") & " EOD Trade Summary"
+                    .To = myTo
+                    .HTMLBody = HTMLBody
+                    If InStr(myCc, "@") > 0 Then
+                        .Cc = myCc
+                    End If
+                    .Display    ' 显示邮件（可选步骤）
+                    .Send       '发送邮件，如果这一步注释掉，那么邮件不发送，可以用来测试（加上上一句的显示，要不然，看不到）
+                                '或者改成 .Save,这样直接保存，不显示也可以看到（草稿箱里）
+                End With
+            End If
+        Next
+    End With
+    Kill myFilePath
+End Sub
+
+Function ReadUTF(ByVal FilePath) As String
+    With CreateObject("ADODB.Stream")
+        .Type = 2
+        .Mode = 3
+        .Open
+        .LoadFromFile FilePath
+        .Charset = "UTF-8"
+        .Position = 2
+        ReadUTF = .ReadText
+        .Close
+    End With
+End Function
